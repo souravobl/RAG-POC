@@ -1,6 +1,7 @@
 # retriever.py
 
 import chromadb
+import time
 
 # Paths and collection names
 CHROMA_DIR = "chroma_db"
@@ -9,6 +10,9 @@ SUMMARY_COLLECTION_NAME = "summary_chunks"
 
 # Initialize ChromaDB client
 client = chromadb.PersistentClient(path=CHROMA_DIR)
+
+# Cache for collections to avoid repeated lookups
+_collection_cache = {}
 
 def retrieve_chunks(query, task="qna", top_k=3, filter_criteria=None):
     """
@@ -23,13 +27,20 @@ def retrieve_chunks(query, task="qna", top_k=3, filter_criteria=None):
     Returns:
         list: List of dictionaries with retrieved chunks and metadata
     """
+    start_time = time.time()
+    
     # Validate task parameter
     if task not in ["qna", "summary"]:
         raise ValueError("Task must be either 'qna' or 'summary'")
     
-    # Get the appropriate collection
+    # Get the appropriate collection (using cache if available)
     collection_name = f"{task}_chunks"
-    collection = client.get_collection(collection_name)
+    
+    if collection_name in _collection_cache:
+        collection = _collection_cache[collection_name]
+    else:
+        collection = client.get_collection(collection_name)
+        _collection_cache[collection_name] = collection
     
     # Prepare query parameters
     query_params = {
@@ -67,6 +78,8 @@ def retrieve_chunks(query, task="qna", top_k=3, filter_criteria=None):
     
     # Handle case where no results are found
     if not results["documents"] or len(results["documents"][0]) == 0:
+        query_time = time.time() - start_time
+        print(f"  - No results found (search took {query_time:.4f} seconds)")
         return []
         
     for i in range(len(results["documents"][0])):
@@ -83,5 +96,8 @@ def retrieve_chunks(query, task="qna", top_k=3, filter_criteria=None):
             },
             "score": similarity_score
         })
+    
+    query_time = time.time() - start_time
+    print(f"  - Retrieved {len(formatted_results)} chunks in {query_time:.4f} seconds")
     
     return formatted_results

@@ -11,7 +11,7 @@ from embedder import embed_chunks
 
 # Import the generator for interactive Q&A
 try:
-    from generator import generate_answer
+    from generator import generate_answer, load_model
     GENERATOR_AVAILABLE = True
 except ImportError:
     print("Note: LLM generator module not available. Interactive Q&A will be disabled.")
@@ -225,6 +225,15 @@ def interactive_menu():
         print("\n❌ Interactive menu requires the generator module.")
         print("Please ensure you have the necessary LLM model installed.")
         return
+    
+    # Preload the LLM model to avoid delay on first query
+    try:
+        print("\n🧠 Preloading LLM model...")
+        load_model()
+        print("✅ Model loaded successfully!")
+    except Exception as e:
+        print(f"⚠️ Model preloading failed: {str(e)}")
+        print("The model will be loaded on first query instead.")
         
     # Get available PDFs
     available_pdfs = get_available_pdfs()

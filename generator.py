@@ -13,23 +13,32 @@ MAX_TOKENS = 512  # Limit generation to avoid slow long responses
 import multiprocessing
 CPU_THREADS = max(2, multiprocessing.cpu_count() - 1)
 
+# Global LLM instance - load once, use many times
+_LLM_INSTANCE = None
 
 # === Load GGUF Model ===
 def load_model():
+    global _LLM_INSTANCE
+    
+    # Return existing instance if already loaded
+    if _LLM_INSTANCE is not None:
+        return _LLM_INSTANCE
+        
     if not os.path.exists(MODEL_PATH):
         raise FileNotFoundError(f"Model file not found at: {MODEL_PATH}")
 
     print(f"🧠 Loading model from: {MODEL_PATH}")
-    print(CPU_THREADS)
-    llm = Llama(
+    print(f"Using {CPU_THREADS} CPU threads")
+    
+    _LLM_INSTANCE = Llama(
         model_path=MODEL_PATH,
         n_ctx=2048,
         n_threads=CPU_THREADS,
-        n_batch=64,
+        n_batch=512,  # Increased batch size for faster processing
         use_mlock=True,  # lock model in RAM to avoid swap
         verbose=False
     )
-    return llm
+    return _LLM_INSTANCE
 
 
 
@@ -87,7 +96,7 @@ Answer: [/INST]"""
 
 
 # === Main Answer Generator ===
-def generate_answer(query: str, top_k: int = 4, filter_criteria=None, task: str = "qa", chunks_override=None):
+def generate_answer(query: str, top_k: int = 5, filter_criteria=None, task: str = "qa", chunks_override=None):
     # Start timing the entire process
     total_start_time = time.time()
     
@@ -113,12 +122,14 @@ def generate_answer(query: str, top_k: int = 4, filter_criteria=None, task: str 
     # Step 3: Run inference
     print("🤖 Running inference using Mistral...")
     inference_start = time.time()
+    
+    # Get the model (will be loaded only once)
     llm = load_model()
     
     response = llm(
         prompt,
         max_tokens=MAX_TOKENS,
-        temperature=0.1,
+        temperature=0.7,
         top_p=0.95,
         repeat_penalty=1.2,
         stop=["</s>"]
