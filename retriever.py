@@ -38,15 +38,37 @@ def retrieve_chunks(query, task="qna", top_k=3, filter_criteria=None):
         "include": ["documents", "metadatas", "distances"]
     }
     
-    # Add filter if provided
+    # Add filter if provided - ChromaDB requires a specific format with operators
     if filter_criteria:
-        query_params["where"] = filter_criteria
+        # ChromaDB requires compound filters to use $and operator
+        if len(filter_criteria) > 1:
+            # Create a list of conditions for the $and operator
+            conditions = []
+            for key, value in filter_criteria.items():
+                conditions.append({key: {"$eq": value}})
+            
+            # Use the $and operator for multiple conditions
+            query_params["where"] = {"$and": conditions}
+        else:
+            # For single condition, use simple format
+            key, value = next(iter(filter_criteria.items()))
+            query_params["where"] = {key: {"$eq": value}}
     
     # Execute query
-    results = collection.query(**query_params)
+    try:
+        results = collection.query(**query_params)
+    except Exception as e:
+        print(f"Query error: {str(e)}")
+        print(f"Query parameters: {query_params}")
+        raise
     
     # Format results
     formatted_results = []
+    
+    # Handle case where no results are found
+    if not results["documents"] or len(results["documents"][0]) == 0:
+        return []
+        
     for i in range(len(results["documents"][0])):
         # Convert distance to similarity score (1 - normalized_distance)
         # ChromaDB distances are already normalized between 0-1

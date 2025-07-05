@@ -147,12 +147,14 @@ def get_pdf_summary(pdf_name):
     from retriever import retrieve_chunks
     
     try:
+        print(f"\n🔍 Retrieving summary for {pdf_name}...")
+        
         # Get summary chunks for this PDF
         filter_criteria = {"source": pdf_name, "chunk_type": "summary"}
         summary_chunks = retrieve_chunks(
-            query="summary",
+            query="summary of document",  # Generic query to find summary chunks
             task="summary",
-            top_k=10,
+            top_k=50,  # Get more chunks to ensure we have all pages
             filter_criteria=filter_criteria
         )
         
@@ -167,16 +169,55 @@ def get_pdf_summary(pdf_name):
         # Sort chunks by page number
         summary_chunks.sort(key=lambda x: x['metadata']['page_number'])
         
-        # Display each chunk
+        # First display the page-wise content
+        print("\n📄 Page-by-page content:")
         for i, chunk in enumerate(summary_chunks, 1):
             page = chunk['metadata']['page_number']
             print(f"\n📄 Page {page}:")
             print("-" * 40)
             print(chunk['text'][:500] + "..." if len(chunk['text']) > 500 else chunk['text'])
             print("-" * 40)
+        
+        # Now generate an actual summary using the LLM if available
+        if GENERATOR_AVAILABLE:
+            print("\n🤖 Generating an overall summary of the document...")
+            try:
+                # Create a query that asks for a summary
+                query = f"Please provide a comprehensive summary of this document about {pdf_name}"
+                
+                # Limit the number of chunks to avoid context window issues
+                # For longer documents, we'll summarize the first few pages
+                max_chunks = 3  # Start with a small number of chunks
+                
+                if len(summary_chunks) > max_chunks:
+                    print(f"\nℹ️ Document is long ({len(summary_chunks)} pages). Summarizing first {max_chunks} pages...")
+                    limited_chunks = summary_chunks[:max_chunks]
+                else:
+                    limited_chunks = summary_chunks
+                
+                # Use the generator to create a summary based on the chunks
+                filter_criteria = {"source": pdf_name, "chunk_type": "summary"}
+                summary, _ = generate_answer(
+                    query, 
+                    filter_criteria=filter_criteria, 
+                    top_k=max_chunks, 
+                    task="summary",
+                    chunks_override=limited_chunks  # Pass the chunks directly
+                )
+                
+                print("\n" + "=" * 50)
+                print("📝 Document Summary:")
+                print("=" * 50)
+                print(summary)
+                print("=" * 50)
+            except Exception as e:
+                print(f"\n❌ Error generating summary: {str(e)}")
+                print("Displaying raw chunks only.")
             
     except Exception as e:
         print(f"\n❌ Error retrieving summary: {str(e)}")
+        import traceback
+        traceback.print_exc()  # Print detailed error for debugging
 
 def interactive_menu():
     """Display the main interactive menu and handle user choices."""
